@@ -157,13 +157,89 @@ fun AuthScreen(onLoginSuccess: () -> Unit) {
 
 @Composable
 fun MainScreen() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+    val scope = rememberCoroutineScope()
+
+    var foodName by remember { mutableStateOf("") }
+    var grams by remember { mutableStateOf("") }
+
+    var dailyCalories by remember { mutableStateOf(0.0) }
+    var dailyProtein by remember { mutableStateOf(0.0) }
+    var dailyCarbs by remember { mutableStateOf(0.0) }
+    var dailyFat by remember { mutableStateOf(0.0) }
+
+    var message by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "Logged in ✅",
+            text = "Daily calories tracker",
             style = MaterialTheme.typography.headlineMedium
         )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        TextField(
+            value = foodName,
+            onValueChange = { foodName = it },
+            label = { Text("Food name") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        TextField(
+            value = grams,
+            onValueChange = { grams = it },
+            label = { Text("Grams") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = {
+                scope.launch {
+                    try {
+                        val response = RetrofitInstance.api.analyzeFood(
+                            com.fitapp.android.model.FoodRequest(
+                                foodName = foodName,
+                                grams = grams.toDoubleOrNull() ?: 0.0
+                            )
+                        )
+
+                        dailyCalories += response.calories
+                        dailyProtein += response.protein
+                        dailyCarbs += response.carbs
+                        dailyFat += response.fat
+
+                        message = "${response.foodName} added"
+
+                        foodName = ""
+                        grams = ""
+
+                    } catch (e: Exception) {
+                        message = "Error: ${e.message}"
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Add food")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text("Calories: %.1f".format(dailyCalories))
+        Text("Protein: %.1f g".format(dailyProtein))
+        Text("Carbs: %.1f g".format(dailyCarbs))
+        Text("Fat: %.1f g".format(dailyFat))
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(message)
     }
 }
