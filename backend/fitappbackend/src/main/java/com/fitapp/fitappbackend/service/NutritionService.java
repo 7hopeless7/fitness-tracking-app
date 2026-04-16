@@ -22,6 +22,10 @@ public class NutritionService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public FoodResponse analyzeFood(FoodRequest request) {
+        return analyzeFood(request.getFoodName(), request.getGrams());
+    }
+
+    public FoodResponse analyzeFood(String foodName, double grams) {
         try {
             String prompt = """
                 You are a nutrition assistant.
@@ -39,7 +43,7 @@ public class NutritionService {
                   "carbs": number,
                   "fat": number
                 }
-                """.formatted(request.getFoodName(), request.getGrams());
+                """.formatted(foodName, grams);
 
             Map<String, Object> systemMessage = new HashMap<>();
             systemMessage.put("role", "system");
