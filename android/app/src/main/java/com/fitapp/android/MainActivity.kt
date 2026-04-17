@@ -18,12 +18,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +40,8 @@ import com.fitapp.android.api.RetrofitInstance
 import com.fitapp.android.model.LoginRequest
 import com.fitapp.android.model.MealItem
 import com.fitapp.android.model.MealRequest
+import com.fitapp.android.model.ProfileRequest
+import com.fitapp.android.model.ProfileResponse
 import com.fitapp.android.model.RegisterRequest
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -47,14 +53,66 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+enum class AppTab(val label: String) {
+    CALORIES("Calories"),
+    WORKOUTS("Workouts"),
+    PROFILE("Profile")
+}
+
 @Composable
 fun App() {
     var loggedInUserId by remember { mutableStateOf<Long?>(null) }
+    var selectedTab by remember { mutableStateOf(AppTab.CALORIES) }
 
     if (loggedInUserId != null) {
-        MainScreen(userId = loggedInUserId!!)
+        MainTabs(
+            userId = loggedInUserId!!,
+            selectedTab = selectedTab,
+            onTabSelected = { selectedTab = it },
+            onLogout = {
+                loggedInUserId = null
+                selectedTab = AppTab.CALORIES
+            }
+        )
     } else {
         AuthScreen(onLoginSuccess = { userId -> loggedInUserId = userId })
+    }
+}
+
+@Composable
+fun MainTabs(
+    userId: Long,
+    selectedTab: AppTab,
+    onTabSelected: (AppTab) -> Unit,
+    onLogout: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Box(modifier = Modifier.weight(1f)) {
+            when (selectedTab) {
+                AppTab.CALORIES -> CaloriesScreen(userId = userId)
+                AppTab.WORKOUTS -> WorkoutsScreen()
+                AppTab.PROFILE -> ProfileScreen(userId = userId, onLogout = onLogout)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            AppTab.entries.forEach { tab ->
+                val isSelected = selectedTab == tab
+                if (isSelected) {
+                    Button(onClick = { onTabSelected(tab) }, modifier = Modifier.weight(1f)) {
+                        Text(tab.label)
+                    }
+                } else {
+                    OutlinedButton(onClick = { onTabSelected(tab) }, modifier = Modifier.weight(1f)) {
+                        Text(tab.label)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -117,7 +175,7 @@ fun AuthScreen(onLoginSuccess: (Long) -> Unit) {
 }
 
 @Composable
-fun MainScreen(userId: Long) {
+fun CaloriesScreen(userId: Long) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -129,6 +187,7 @@ fun MainScreen(userId: Long) {
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
 
     var meals by remember { mutableStateOf(emptyList<MealItem>()) }
+    var profile by remember { mutableStateOf<ProfileResponse?>(null) }
     var message by remember { mutableStateOf("") }
 
     fun loadMeals() {
@@ -142,16 +201,28 @@ fun MainScreen(userId: Long) {
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(selectedDate) { loadMeals() }
+    fun loadProfile() {
+        scope.launch {
+            try {
+                profile = RetrofitInstance.api.getProfile(userId)
+            } catch (_: Exception) {
+                // Optional for this screen.
+            }
+        }
+    }
+
+    LaunchedEffect(selectedDate) { loadMeals() }
+    LaunchedEffect(Unit) { loadProfile() }
 
     val totalCalories = meals.sumOf { it.calories }
     val totalProtein = meals.sumOf { it.protein }
     val totalCarbs = meals.sumOf { it.carbs }
     val totalFat = meals.sumOf { it.fat }
+    val recommendedCalories = profile?.recommendedCalories
 
-    Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Text(text = "Meals", style = MaterialTheme.typography.headlineMedium)
+            Text(text = "Calories", style = MaterialTheme.typography.headlineMedium)
             Spacer(modifier = Modifier.height(8.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -177,6 +248,22 @@ fun MainScreen(userId: Long) {
                     Text("Protein: ${"%.1f".format(totalProtein)} g")
                     Text("Carbs: ${"%.1f".format(totalCarbs)} g")
                     Text("Fat: ${"%.1f".format(totalFat)} g")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Daily target", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (recommendedCalories == null) {
+                        Text("Set up your profile to get a target calorie goal.")
+                    } else {
+                        val progress = (totalCalories / recommendedCalories).coerceIn(0.0, 1.0).toFloat()
+                        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("${"%.0f".format(totalCalories)} / ${"%.0f".format(recommendedCalories)} kcal")
+                    }
                 }
             }
 
@@ -282,6 +369,154 @@ fun MainScreen(userId: Long) {
                     }
                 }
             )
+        }
+    }
+}
+
+@Composable
+fun WorkoutsScreen() {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
+        Text("Workouts", style = MaterialTheme.typography.headlineMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("Workout page coming soon.")
+    }
+}
+
+@Composable
+fun ProfileScreen(userId: Long, onLogout: () -> Unit) {
+    val scope = rememberCoroutineScope()
+
+    val activityOptions = listOf(
+        "Mostly sedentary (little or no exercise)",
+        "Lightly active (1-2 workouts/week)",
+        "Moderately active (3-4 workouts/week)",
+        "Very active (5-7 workouts/week)"
+    )
+    val goalOptions = listOf("Maintain weight", "Gain weight", "Lose weight")
+
+    var profile by remember { mutableStateOf<ProfileResponse?>(null) }
+    var age by remember { mutableStateOf("") }
+    var weight by remember { mutableStateOf("") }
+    var selectedActivity by remember { mutableStateOf(activityOptions[0]) }
+    var selectedGoal by remember { mutableStateOf(goalOptions[0]) }
+    var message by remember { mutableStateOf("") }
+
+    fun loadProfile() {
+        scope.launch {
+            try {
+                val response = RetrofitInstance.api.getProfile(userId)
+                profile = response
+                age = response.age?.toString() ?: ""
+                weight = response.weightKg?.toString() ?: ""
+                selectedActivity = response.activityLevel ?: activityOptions[0]
+                selectedGoal = response.goal ?: goalOptions[0]
+            } catch (e: Exception) {
+                message = "Error: ${e.message}"
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) { loadProfile() }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Text("Profile", style = MaterialTheme.typography.headlineMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text("Name: ${profile?.username ?: "-"}")
+        Text("Email: ${profile?.email ?: "-"}")
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("Your details", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        TextField(value = age, onValueChange = { age = it }, label = { Text("Age") }, modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(8.dp))
+        TextField(value = weight, onValueChange = { weight = it }, label = { Text("Weight (kg)") }, modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(8.dp))
+
+        DropdownSelector(
+            label = "Activity level",
+            selectedValue = selectedActivity,
+            options = activityOptions,
+            onSelected = { selectedActivity = it }
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        DropdownSelector(
+            label = "Goal",
+            selectedValue = selectedGoal,
+            options = goalOptions,
+            onSelected = { selectedGoal = it }
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+        Button(
+            onClick = {
+                scope.launch {
+                    try {
+                        profile = RetrofitInstance.api.updateProfile(
+                            userId = userId,
+                            request = ProfileRequest(
+                                age = age.toIntOrNull(),
+                                weightKg = weight.toDoubleOrNull(),
+                                activityLevel = selectedActivity,
+                                goal = selectedGoal
+                            )
+                        )
+                        message = "Profile updated"
+                    } catch (e: Exception) {
+                        message = "Error: ${e.message}"
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Save details")
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            "Recommended calories: ${profile?.recommendedCalories?.let { "%.0f".format(it) } ?: "Not calculated yet"}"
+        )
+
+        if (message.isNotBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(message)
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+        OutlinedButton(onClick = onLogout, modifier = Modifier.fillMaxWidth()) {
+            Text("Log out")
+        }
+    }
+}
+
+@Composable
+fun DropdownSelector(
+    label: String,
+    selectedValue: String,
+    options: List<String>,
+    onSelected: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(label)
+        Spacer(modifier = Modifier.height(4.dp))
+        Box {
+            OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+                Text(selectedValue)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option) },
+                        onClick = {
+                            onSelected(option)
+                            expanded = false
+                        }
+                    )
+                }
+            }
         }
     }
 }

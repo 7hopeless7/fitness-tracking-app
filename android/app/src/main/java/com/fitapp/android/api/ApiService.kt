@@ -4,6 +4,8 @@ import com.fitapp.android.model.AuthResponse
 import com.fitapp.android.model.LoginRequest
 import com.fitapp.android.model.MealItem
 import com.fitapp.android.model.MealRequest
+import com.fitapp.android.model.ProfileRequest
+import com.fitapp.android.model.ProfileResponse
 import com.fitapp.android.model.RegisterRequest
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -46,4 +48,15 @@ interface ApiService {
         @Path("mealId") mealId: Long,
         @Query("userId") userId: Long
     )
+
+    @GET("profile")
+    suspend fun getProfile(
+        @Query("userId") userId: Long
+    ): ProfileResponse
+
+    @PUT("profile")
+    suspend fun updateProfile(
+        @Query("userId") userId: Long,
+        @Body request: ProfileRequest
+    ): ProfileResponse
 }
