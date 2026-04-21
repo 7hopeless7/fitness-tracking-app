@@ -1,12 +1,17 @@
 package com.fitapp.android.api
 
 import com.fitapp.android.model.AuthResponse
+import com.fitapp.android.model.ExerciseLibraryResponse
+import com.fitapp.android.model.GenerateWorkoutRequest
+import com.fitapp.android.model.GeneratedWorkoutPlanResponse
 import com.fitapp.android.model.LoginRequest
 import com.fitapp.android.model.MealItem
 import com.fitapp.android.model.MealRequest
 import com.fitapp.android.model.ProfileRequest
 import com.fitapp.android.model.ProfileResponse
 import com.fitapp.android.model.RegisterRequest
+import com.fitapp.android.model.WorkoutPayload
+import com.fitapp.android.model.WorkoutResponse
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -48,6 +53,38 @@ interface ApiService {
         @Path("mealId") mealId: Long,
         @Query("userId") userId: Long
     )
+
+    @GET("workouts")
+    suspend fun getWorkouts(
+        @Query("userId") userId: Long
+    ): List<WorkoutResponse>
+
+    @POST("workouts")
+    suspend fun createWorkout(
+        @Query("userId") userId: Long,
+        @Body request: WorkoutPayload
+    ): WorkoutResponse
+
+    @PUT("workouts/{workoutId}")
+    suspend fun updateWorkout(
+        @Path("workoutId") workoutId: Long,
+        @Query("userId") userId: Long,
+        @Body request: WorkoutPayload
+    ): WorkoutResponse
+
+    @DELETE("workouts/{workoutId}")
+    suspend fun deleteWorkout(
+        @Path("workoutId") workoutId: Long,
+        @Query("userId") userId: Long
+    )
+
+    @GET("workouts/exercises")
+    suspend fun getExerciseLibrary(): ExerciseLibraryResponse
+
+    @POST("workouts/generate")
+    suspend fun generateWorkoutPlan(
+        @Body request: GenerateWorkoutRequest
+    ): GeneratedWorkoutPlanResponse
 
     @GET("profile")
     suspend fun getProfile(

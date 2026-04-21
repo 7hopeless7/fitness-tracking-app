@@ -29,6 +29,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -38,11 +39,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.fitapp.android.api.RetrofitInstance
 import com.fitapp.android.model.LoginRequest
+import com.fitapp.android.model.GenerateWorkoutRequest
+import com.fitapp.android.model.ExerciseLibraryResponse
 import com.fitapp.android.model.MealItem
 import com.fitapp.android.model.MealRequest
 import com.fitapp.android.model.ProfileRequest
 import com.fitapp.android.model.ProfileResponse
 import com.fitapp.android.model.RegisterRequest
+import com.fitapp.android.model.WorkoutExercisePayload
+import com.fitapp.android.model.WorkoutPayload
+import com.fitapp.android.model.WorkoutResponse
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -90,7 +96,7 @@ fun MainTabs(
         Box(modifier = Modifier.weight(1f)) {
             when (selectedTab) {
                 AppTab.CALORIES -> CaloriesScreen(userId = userId)
-                AppTab.WORKOUTS -> WorkoutsScreen()
+                AppTab.WORKOUTS -> WorkoutsScreen(userId = userId)
                 AppTab.PROFILE -> ProfileScreen(userId = userId, onLogout = onLogout)
             }
         }
@@ -374,12 +380,387 @@ fun CaloriesScreen(userId: Long) {
 }
 
 @Composable
-fun WorkoutsScreen() {
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
-        Text("Workouts", style = MaterialTheme.typography.headlineMedium)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("Workout page coming soon.")
+fun WorkoutsScreen(userId: Long) {
+    val scope = rememberCoroutineScope()
+
+    var workouts by remember { mutableStateOf(emptyList<WorkoutDraft>()) }
+    var showWorkoutEditor by remember { mutableStateOf(false) }
+    var editingWorkoutId by remember { mutableStateOf<Long?>(null) }
+    var workoutName by remember { mutableStateOf("") }
+    val workoutExercises = remember { mutableStateListOf<WorkoutExerciseDraft>() }
+
+    var exerciseLibrary by remember { mutableStateOf<ExerciseLibraryResponse?>(null) }
+    var selectedCategory by remember { mutableStateOf("") }
+    var selectedExercise by remember { mutableStateOf("") }
+
+    var showAiGenerator by remember { mutableStateOf(false) }
+    var aiLevel by remember { mutableStateOf("BEGINNER") }
+    var aiDuration by remember { mutableStateOf("45") }
+    var aiDays by remember { mutableStateOf("3") }
+    var message by remember { mutableStateOf("") }
+
+    fun loadExerciseLibrary() {
+        scope.launch {
+            try {
+                exerciseLibrary = RetrofitInstance.api.getExerciseLibrary()
+                val firstCategory = exerciseLibrary?.categories?.keys?.firstOrNull().orEmpty()
+                selectedCategory = firstCategory
+                selectedExercise = exerciseLibrary?.categories?.get(firstCategory)?.firstOrNull().orEmpty()
+            } catch (e: Exception) {
+                message = "Error loading exercise list: ${e.message}"
+            }
+        }
     }
+
+    fun loadWorkouts() {
+        scope.launch {
+            try {
+                workouts = RetrofitInstance.api.getWorkouts(userId).map { it.toDraft() }
+                message = ""
+            } catch (e: Exception) {
+                message = "Error loading workouts: ${e.message}"
+            }
+        }
+    }
+
+    fun startCreateWorkout() {
+        editingWorkoutId = null
+        workoutName = ""
+        workoutExercises.clear()
+        showWorkoutEditor = true
+    }
+
+    fun startEditWorkout(workout: WorkoutDraft) {
+        editingWorkoutId = workout.id
+        workoutName = workout.name
+        workoutExercises.clear()
+        workoutExercises.addAll(workout.exercises.map { it.copy() })
+        showWorkoutEditor = true
+    }
+
+    LaunchedEffect(Unit) {
+        loadExerciseLibrary()
+        loadWorkouts()
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Text("Workouts", style = MaterialTheme.typography.headlineMedium)
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(onClick = { startCreateWorkout() }, modifier = Modifier.weight(1f)) {
+                Text("Create workout")
+            }
+            OutlinedButton(onClick = { showAiGenerator = true }, modifier = Modifier.weight(1f)) {
+                Text("AI Generate")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (workouts.isEmpty()) {
+            Text("No workouts yet. Create one to get started.")
+        } else {
+            LazyColumn(modifier = Modifier.weight(1f)) {
+                items(workouts, key = { it.id }) { workout ->
+                    WorkoutCard(
+                        workout = workout,
+                        onEdit = { startEditWorkout(workout) },
+                        onDelete = {
+                            scope.launch {
+                                try {
+                                    RetrofitInstance.api.deleteWorkout(workout.id, userId)
+                                    loadWorkouts()
+                                } catch (e: Exception) {
+                                    message = "Error deleting workout: ${e.message}"
+                                }
+                            }
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+        }
+
+        if (message.isNotBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(message)
+        }
+    }
+
+    if (showWorkoutEditor) {
+        WorkoutEditorDialog(
+            title = if (editingWorkoutId == null) "Create workout" else "Edit workout",
+            workoutName = workoutName,
+            workoutExercises = workoutExercises,
+            exerciseLibrary = exerciseLibrary,
+            selectedCategory = selectedCategory,
+            selectedExercise = selectedExercise,
+            onWorkoutNameChange = { workoutName = it },
+            onSelectedCategoryChange = { category ->
+                selectedCategory = category
+                selectedExercise = exerciseLibrary?.categories?.get(category)?.firstOrNull().orEmpty()
+            },
+            onSelectedExerciseChange = { selectedExercise = it },
+            onAddExercise = {
+                if (selectedExercise.isNotBlank()) {
+                    workoutExercises.add(WorkoutExerciseDraft(name = selectedExercise, weightKg = "", reps = ""))
+                }
+            },
+            onExerciseWeightChange = { index, value ->
+                workoutExercises[index] = workoutExercises[index].copy(weightKg = value)
+            },
+            onExerciseRepsChange = { index, value ->
+                workoutExercises[index] = workoutExercises[index].copy(reps = value)
+            },
+            onRemoveExercise = { index -> workoutExercises.removeAt(index) },
+            onDismiss = { showWorkoutEditor = false },
+            onSave = {
+                scope.launch {
+                    try {
+                        val payload = WorkoutPayload(
+                            name = workoutName.trim().ifBlank { "Untitled Workout" },
+                            exercises = workoutExercises.map { WorkoutExercisePayload(it.name, it.reps, it.weightKg) }
+                        )
+                        if (editingWorkoutId == null) {
+                            RetrofitInstance.api.createWorkout(userId = userId, request = payload)
+                        } else {
+                            RetrofitInstance.api.updateWorkout(
+                                workoutId = editingWorkoutId!!,
+                                userId = userId,
+                                request = payload
+                            )
+                        }
+                        showWorkoutEditor = false
+                        loadWorkouts()
+                    } catch (e: Exception) {
+                        message = "Error saving workout: ${e.message}"
+                    }
+                }
+            }
+        )
+    }
+
+    if (showAiGenerator) {
+        AiGeneratorDialog(
+            level = aiLevel,
+            durationMinutes = aiDuration,
+            trainingDays = aiDays,
+            onLevelChange = { aiLevel = it },
+            onDurationChange = { aiDuration = it },
+            onTrainingDaysChange = { aiDays = it },
+            onDismiss = { showAiGenerator = false },
+            onGenerate = {
+                scope.launch {
+                    try {
+                        val generated = RetrofitInstance.api.generateWorkoutPlan(
+                            GenerateWorkoutRequest(
+                                level = aiLevel,
+                                durationMinutes = aiDuration.toIntOrNull() ?: 45,
+                                trainingDaysPerWeek = aiDays.toIntOrNull() ?: 3
+                            )
+                        )
+
+                        val payload = WorkoutPayload(
+                            name = generated.workoutName,
+                            exercises = generated.exercises.map {
+                                WorkoutExercisePayload(
+                                    name = it.name,
+                                    reps = it.reps,
+                                    weightKg = it.targetWeightKg?.toString().orEmpty()
+                                )
+                            }
+                        )
+                        RetrofitInstance.api.createWorkout(userId = userId, request = payload)
+                        showAiGenerator = false
+                        message = "AI workout added to your account."
+                        loadWorkouts()
+                    } catch (e: Exception) {
+                        message = "Error generating AI workout: ${e.message}"
+                    }
+                }
+            }
+        )
+    }
+}
+
+data class WorkoutDraft(
+    val id: Long,
+    val name: String,
+    val exercises: List<WorkoutExerciseDraft>
+)
+
+data class WorkoutExerciseDraft(
+    val name: String,
+    val weightKg: String,
+    val reps: String
+)
+
+private fun WorkoutResponse.toDraft(): WorkoutDraft {
+    return WorkoutDraft(
+        id = id,
+        name = name,
+        exercises = exercises.map { WorkoutExerciseDraft(name = it.name, weightKg = it.weightKg, reps = it.reps) }
+    )
+}
+
+@Composable
+fun WorkoutCard(workout: WorkoutDraft, onEdit: () -> Unit, onDelete: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(workout.name, style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+            workout.exercises.forEach { exercise ->
+                Text("• ${exercise.name} — ${exercise.reps.ifBlank { "reps not set" }} reps, ${exercise.weightKg.ifBlank { "weight not set" }} kg")
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onEdit) { Text("Edit") }
+                OutlinedButton(onClick = onDelete) { Text("Remove") }
+            }
+        }
+    }
+}
+
+@Composable
+fun WorkoutEditorDialog(
+    title: String,
+    workoutName: String,
+    workoutExercises: List<WorkoutExerciseDraft>,
+    exerciseLibrary: ExerciseLibraryResponse?,
+    selectedCategory: String,
+    selectedExercise: String,
+    onWorkoutNameChange: (String) -> Unit,
+    onSelectedCategoryChange: (String) -> Unit,
+    onSelectedExerciseChange: (String) -> Unit,
+    onAddExercise: () -> Unit,
+    onExerciseWeightChange: (Int, String) -> Unit,
+    onExerciseRepsChange: (Int, String) -> Unit,
+    onRemoveExercise: (Int) -> Unit,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit
+) {
+    val categories = exerciseLibrary?.categories?.keys?.toList().orEmpty()
+    val exercisesForCategory = exerciseLibrary?.categories?.get(selectedCategory).orEmpty()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            LazyColumn {
+                item {
+                    TextField(
+                        value = workoutName,
+                        onValueChange = onWorkoutNameChange,
+                        label = { Text("Workout name") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    DropdownSelector(
+                        label = "Muscle group",
+                        selectedValue = selectedCategory.ifBlank { "Choose group" },
+                        options = categories,
+                        onSelected = onSelectedCategoryChange
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    DropdownSelector(
+                        label = "Exercise",
+                        selectedValue = selectedExercise.ifBlank { "Choose exercise" },
+                        options = exercisesForCategory,
+                        onSelected = onSelectedExerciseChange
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(onClick = onAddExercise, modifier = Modifier.fillMaxWidth()) {
+                        Text("Add exercise")
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Exercises in workout", style = MaterialTheme.typography.titleSmall)
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
+
+                items(workoutExercises.size) { index ->
+                    val exercise = workoutExercises[index]
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(exercise.name, style = MaterialTheme.typography.bodyLarge)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            TextField(
+                                value = exercise.weightKg,
+                                onValueChange = { onExerciseWeightChange(index, it) },
+                                label = { Text("Weight (kg)") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            TextField(
+                                value = exercise.reps,
+                                onValueChange = { onExerciseRepsChange(index, it) },
+                                label = { Text("Rep count") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            OutlinedButton(onClick = { onRemoveExercise(index) }) {
+                                Text("Remove")
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+        },
+        confirmButton = { Button(onClick = onSave) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+fun AiGeneratorDialog(
+    level: String,
+    durationMinutes: String,
+    trainingDays: String,
+    onLevelChange: (String) -> Unit,
+    onDurationChange: (String) -> Unit,
+    onTrainingDaysChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onGenerate: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("AI Workout Generator") },
+        text = {
+            Column {
+                DropdownSelector(
+                    label = "Experience level",
+                    selectedValue = level,
+                    options = listOf("BEGINNER", "INTERMEDIATE", "ADVANCED"),
+                    onSelected = onLevelChange
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                TextField(
+                    value = durationMinutes,
+                    onValueChange = onDurationChange,
+                    label = { Text("Workout length (minutes)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                TextField(
+                    value = trainingDays,
+                    onValueChange = onTrainingDaysChange,
+                    label = { Text("Training days per week") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = { Button(onClick = onGenerate) { Text("Generate") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 @Composable
