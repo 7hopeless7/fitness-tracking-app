@@ -4,6 +4,7 @@ import android.app.DatePickerDialog
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,16 +17,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,13 +39,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.fitapp.android.api.RetrofitInstance
-import com.fitapp.android.model.LoginRequest
-import com.fitapp.android.model.GenerateWorkoutRequest
 import com.fitapp.android.model.ExerciseLibraryResponse
+import com.fitapp.android.model.GenerateWorkoutRequest
+import com.fitapp.android.model.LoginRequest
 import com.fitapp.android.model.MealItem
 import com.fitapp.android.model.MealRequest
 import com.fitapp.android.model.ProfileRequest
@@ -49,13 +56,18 @@ import com.fitapp.android.model.RegisterRequest
 import com.fitapp.android.model.WorkoutExercisePayload
 import com.fitapp.android.model.WorkoutPayload
 import com.fitapp.android.model.WorkoutResponse
+import com.fitapp.android.ui.theme.FitAppAndroidTheme
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { App() }
+        setContent {
+            FitAppAndroidTheme {
+                App()
+            }
+        }
     }
 }
 
@@ -92,31 +104,44 @@ fun MainTabs(
     onTabSelected: (AppTab) -> Unit,
     onLogout: () -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Box(modifier = Modifier.weight(1f)) {
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
+            BottomAppBar(containerColor = MaterialTheme.colorScheme.surface) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    AppTab.entries.forEach { tab ->
+                        val isSelected = selectedTab == tab
+                        val colors = if (isSelected) {
+                            ButtonDefaults.buttonColors()
+                        } else {
+                            ButtonDefaults.outlinedButtonColors()
+                        }
+                        if (isSelected) {
+                            Button(
+                                onClick = { onTabSelected(tab) },
+                                modifier = Modifier.weight(1f),
+                                colors = colors
+                            ) { Text(tab.label) }
+                        } else {
+                            OutlinedButton(
+                                onClick = { onTabSelected(tab) },
+                                modifier = Modifier.weight(1f),
+                                colors = colors
+                            ) { Text(tab.label) }
+                        }
+                    }
+                }
+            }
+        }
+    ) { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize().padding(innerPadding).padding(16.dp)) {
             when (selectedTab) {
                 AppTab.CALORIES -> CaloriesScreen(userId = userId)
                 AppTab.WORKOUTS -> WorkoutsScreen(userId = userId)
                 AppTab.PROFILE -> ProfileScreen(userId = userId, onLogout = onLogout)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            AppTab.entries.forEach { tab ->
-                val isSelected = selectedTab == tab
-                if (isSelected) {
-                    Button(onClick = { onTabSelected(tab) }, modifier = Modifier.weight(1f)) {
-                        Text(tab.label)
-                    }
-                } else {
-                    OutlinedButton(onClick = { onTabSelected(tab) }, modifier = Modifier.weight(1f)) {
-                        Text(tab.label)
-                    }
-                }
             }
         }
     }
@@ -132,51 +157,76 @@ fun AuthScreen(onLoginSuccess: (Long) -> Unit) {
     var password by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.Center
+    Box(
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center
     ) {
-        Text(text = if (isLoginMode) "Login" else "Register", style = MaterialTheme.typography.headlineMedium)
-        Spacer(modifier = Modifier.height(16.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(20.dp),
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = if (isLoginMode) "Welcome back" else "Create your account",
+                    style = MaterialTheme.typography.headlineSmall
+                )
+                Text(
+                    text = if (isLoginMode) "Sign in to continue your fitness journey." else "Register to start tracking workouts and meals.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(16.dp))
 
-        if (!isLoginMode) {
-            TextField(value = username, onValueChange = { username = it }, label = { Text("Username") }, modifier = Modifier.fillMaxWidth())
-            Spacer(modifier = Modifier.height(8.dp))
-        }
+                if (!isLoginMode) {
+                    OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("Username") }, modifier = Modifier.fillMaxWidth())
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
 
-        TextField(value = email, onValueChange = { email = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
-        Spacer(modifier = Modifier.height(8.dp))
-        TextField(value = password, onValueChange = { password = it }, label = { Text("Password") }, modifier = Modifier.fillMaxWidth())
-        Spacer(modifier = Modifier.height(16.dp))
+                OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(16.dp))
 
-        Button(onClick = {
-            scope.launch {
-                try {
-                    val response = if (isLoginMode) {
-                        RetrofitInstance.api.login(LoginRequest(email = email, password = password))
-                    } else {
-                        RetrofitInstance.api.register(RegisterRequest(username = username, email = email, password = password))
+                Button(onClick = {
+                    scope.launch {
+                        try {
+                            val response = if (isLoginMode) {
+                                RetrofitInstance.api.login(LoginRequest(email = email, password = password))
+                            } else {
+                                RetrofitInstance.api.register(RegisterRequest(username = username, email = email, password = password))
+                            }
+
+                            message = response.message
+                            if (response.success && response.userId != null) {
+                                onLoginSuccess(response.userId)
+                            }
+                        } catch (e: Exception) {
+                            message = "Error: ${e.message}"
+                        }
                     }
+                }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (isLoginMode) "Sign in" else "Create account")
+                }
 
-                    message = response.message
-                    if (response.success && response.userId != null) {
-                        onLoginSuccess(response.userId)
-                    }
-                } catch (e: Exception) {
-                    message = "Error: ${e.message}"
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(onClick = { isLoginMode = !isLoginMode; message = "" }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (isLoginMode) "Need an account? Register" else "Already registered? Sign in")
+                }
+
+                if (message.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(message)
                 }
             }
-        }, modifier = Modifier.fillMaxWidth()) {
-            Text(if (isLoginMode) "Login" else "Register")
         }
-
-        Spacer(modifier = Modifier.height(8.dp))
-        TextButton(onClick = { isLoginMode = !isLoginMode; message = "" }, modifier = Modifier.fillMaxWidth()) {
-            Text(if (isLoginMode) "Go to Register" else "Go to Login")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(message)
     }
 }
 
@@ -228,7 +278,8 @@ fun CaloriesScreen(userId: Long) {
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Text(text = "Calories", style = MaterialTheme.typography.headlineMedium)
+            Text(text = "Nutrition Dashboard", style = MaterialTheme.typography.headlineSmall)
+            Text(text = "Track calories and macros for ${selectedDate}.")
             Spacer(modifier = Modifier.height(8.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -245,7 +296,10 @@ fun CaloriesScreen(userId: Long) {
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Total calories", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
@@ -258,7 +312,10 @@ fun CaloriesScreen(userId: Long) {
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Daily target", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
@@ -274,7 +331,7 @@ fun CaloriesScreen(userId: Long) {
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-            Button(onClick = { showAddFoodDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Add food") }
+            Button(onClick = { showAddFoodDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Add food entry") }
             Spacer(modifier = Modifier.height(16.dp))
             Text("Foods", style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(8.dp))
@@ -444,7 +501,8 @@ fun WorkoutsScreen(userId: Long) {
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Text("Workouts", style = MaterialTheme.typography.headlineMedium)
+        Text("Workout Planner", style = MaterialTheme.typography.headlineSmall)
+        Text("Build routines or generate a smart plan.")
         Spacer(modifier = Modifier.height(12.dp))
 
         Row(
@@ -455,7 +513,7 @@ fun WorkoutsScreen(userId: Long) {
                 Text("Create workout")
             }
             OutlinedButton(onClick = { showAiGenerator = true }, modifier = Modifier.weight(1f)) {
-                Text("AI Generate")
+                Text("AI plan")
             }
         }
 
@@ -609,7 +667,10 @@ private fun WorkoutResponse.toDraft(): WorkoutDraft {
 
 @Composable
 fun WorkoutCard(workout: WorkoutDraft, onEdit: () -> Unit, onDelete: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(workout.name, style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(8.dp))
@@ -619,8 +680,8 @@ fun WorkoutCard(workout: WorkoutDraft, onEdit: () -> Unit, onDelete: () -> Unit)
 
             Spacer(modifier = Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onEdit) { Text("Edit") }
-                OutlinedButton(onClick = onDelete) { Text("Remove") }
+                OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) { Text("Edit") }
+                OutlinedButton(onClick = onDelete, modifier = Modifier.weight(1f)) { Text("Remove") }
             }
         }
     }
@@ -653,7 +714,7 @@ fun WorkoutEditorDialog(
         text = {
             LazyColumn {
                 item {
-                    TextField(
+                    OutlinedTextField(
                         value = workoutName,
                         onValueChange = onWorkoutNameChange,
                         label = { Text("Workout name") },
@@ -692,14 +753,14 @@ fun WorkoutEditorDialog(
                         Column(modifier = Modifier.padding(12.dp)) {
                             Text(exercise.name, style = MaterialTheme.typography.bodyLarge)
                             Spacer(modifier = Modifier.height(6.dp))
-                            TextField(
+                            OutlinedTextField(
                                 value = exercise.weightKg,
                                 onValueChange = { onExerciseWeightChange(index, it) },
                                 label = { Text("Weight (kg)") },
                                 modifier = Modifier.fillMaxWidth()
                             )
                             Spacer(modifier = Modifier.height(6.dp))
-                            TextField(
+                            OutlinedTextField(
                                 value = exercise.reps,
                                 onValueChange = { onExerciseRepsChange(index, it) },
                                 label = { Text("Rep count") },
@@ -743,14 +804,14 @@ fun AiGeneratorDialog(
                     onSelected = onLevelChange
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                TextField(
+                OutlinedTextField(
                     value = durationMinutes,
                     onValueChange = onDurationChange,
                     label = { Text("Workout length (minutes)") },
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                TextField(
+                OutlinedTextField(
                     value = trainingDays,
                     onValueChange = onTrainingDaysChange,
                     label = { Text("Training days per week") },
@@ -800,7 +861,7 @@ fun ProfileScreen(userId: Long, onLogout: () -> Unit) {
     LaunchedEffect(Unit) { loadProfile() }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Text("Profile", style = MaterialTheme.typography.headlineMedium)
+        Text("Profile Settings", style = MaterialTheme.typography.headlineSmall)
         Spacer(modifier = Modifier.height(8.dp))
 
         Text("Name: ${profile?.username ?: "-"}")
@@ -810,9 +871,9 @@ fun ProfileScreen(userId: Long, onLogout: () -> Unit) {
         Text("Your details", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(8.dp))
 
-        TextField(value = age, onValueChange = { age = it }, label = { Text("Age") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = age, onValueChange = { age = it }, label = { Text("Age") }, modifier = Modifier.fillMaxWidth())
         Spacer(modifier = Modifier.height(8.dp))
-        TextField(value = weight, onValueChange = { weight = it }, label = { Text("Weight (kg)") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = weight, onValueChange = { weight = it }, label = { Text("Weight (kg)") }, modifier = Modifier.fillMaxWidth())
         Spacer(modifier = Modifier.height(8.dp))
 
         DropdownSelector(
@@ -904,7 +965,10 @@ fun DropdownSelector(
 
 @Composable
 fun MealCard(meal: MealItem, onEdit: () -> Unit, onDelete: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(text = meal.foodName, style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(4.dp))
@@ -916,8 +980,8 @@ fun MealCard(meal: MealItem, onEdit: () -> Unit, onDelete: () -> Unit) {
 
             Spacer(modifier = Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onEdit) { Text("Edit") }
-                OutlinedButton(onClick = onDelete) { Text("Remove") }
+                OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) { Text("Edit") }
+                OutlinedButton(onClick = onDelete, modifier = Modifier.weight(1f)) { Text("Remove") }
             }
         }
     }
@@ -938,14 +1002,14 @@ fun AddOrEditFoodDialog(
         title = { Text(title) },
         text = {
             Column {
-                TextField(
+                OutlinedTextField(
                     value = foodName,
                     onValueChange = onFoodNameChange,
                     label = { Text("Food name") },
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                TextField(
+                OutlinedTextField(
                     value = grams,
                     onValueChange = onGramsChange,
                     label = { Text("Grams") },
