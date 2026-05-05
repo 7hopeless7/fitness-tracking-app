@@ -1,9 +1,7 @@
 package com.fitapp.android.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 
 private val DarkColorScheme = darkColorScheme(
@@ -12,29 +10,20 @@ private val DarkColorScheme = darkColorScheme(
     secondary = BrandAccent,
     background = BrandDark,
     surface = BrandSurface,
+    surfaceVariant = BrandSurfaceVariant,
     onBackground = BrandOnDark,
-    onSurface = BrandOnDark
-)
-
-private val LightColorScheme = lightColorScheme(
-    primary = BrandPrimary,
-    onPrimary = BrandOnPrimary,
-    secondary = BrandDark,
-    background = NeutralBackground,
-    surface = BrandSurfaceLight,
-    onBackground = BrandDark,
-    onSurface = BrandDark
+    onSurface = BrandOnDark,
+    outline = BrandOutline,
+    error = BrandError
 )
 
 @Composable
 fun FitAppAndroidTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
-
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = DarkColorScheme,
         typography = Typography,
         content = content
     )
