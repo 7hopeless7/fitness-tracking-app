@@ -1,0 +1,18 @@
+stages:
+  - test
+  - build
+
+backend_tests:
+  stage: test
+  image: maven:3.9.9-eclipse-temurin-17
+  script:
+    - cd backend/fitappbackend
+    - mvn test
+
+android_build:
+  stage: build
+  image: ghcr.io/cirruslabs/android-sdk:35
+  script:
+    - cd android
+    - chmod +x gradlew
+    - ./gradlew assembleDebug
